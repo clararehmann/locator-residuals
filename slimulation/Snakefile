@@ -1,0 +1,67 @@
+import numpy as np
+import os, sys, subprocess, glob, json
+from pathlib import Path
+
+rng = np.random.default_rng(seed=666)
+
+if os.path.exists('logs'):
+    pass
+else:
+    os.makedirs('logs/')
+output_dir = 'out/'
+
+jsons = os.path.join(output_dir, 'jsons/')
+treeouts = os.path.join(output_dir, 'trees/')
+zarrouts = os.path.join(output_dir, 'zarrs/')
+tsouts = os.path.join(output_dir, 'training_sets/')
+
+# wildcards
+sigmas = [0.5, 0.75, 1.25, 2.0]
+mus = [0.0, 0.5, 1.0, 1.5]
+replicates = np.arange(100)
+"""
+sigmas=[0.5]
+mus = [0.75]
+replicates=[1]
+"""
+
+
+outpath_pattern = "{rep}_sigma_{sigma}_mu_{mu}"
+outpath_base = expand(outpath_pattern, rep=replicates, sigma=sigmas, mu=mus)
+seeds = rng.integers(0, int(1e10), len(outpath_base))
+outpath_base = [outpath_base[i] + '_' + str(seeds[i]) for i in range(len(outpath_base))]
+
+localrules: generate_json, all
+
+rule all:
+    input: [treeouts + outpath_base[i] + '.trees' for i in range(len(outpath_base))]
+
+rule generate_json:
+    params:
+        sigma='{sigma}',
+        mu='{mu}',
+        seed='{seed}'
+    output: jsons + outpath_pattern + '_{seed}.json'
+    run:
+        info = {'SEED':int(params.seed),
+                'SI':float(params.sigma),
+                'SM':float(params.sigma),
+                'SD':float(params.sigma),
+                'BIAS':float(params.mu)}
+        with open(str(output), 'w') as outfile:
+            json.dump(info, outfile)
+
+rule slimulate:
+    input: jsons + outpath_pattern + '_{seed}.json'
+    params:
+        outdir = treeouts + outpath_pattern,
+        seed = '{seed}'
+    output:
+        treeouts + outpath_pattern + '_{seed}.trees'
+    conda: 'SLiM'
+    resources: 
+        time='48:00:00'
+    shell:
+        '''
+        slim -d 'ParamFile="{input}"' -d 'OUTDIR="{params.outdir}"' ../scripts/biased_migration.slim
+        '''
