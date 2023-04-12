@@ -1,0 +1,136 @@
+initialize() {
+
+    initializeSLiMModelType("nonWF");
+    initializeSLiMOptions(dimensionality="xy");
+    initializeTreeSeq(checkCoalescence=T);
+
+    defaults = Dictionary(
+        "SEED", getSeed(),
+        "THETA", 1e-8, 
+        "K", 5, 
+        "SI", 0.5,
+        "SM", 0.5,
+        "SD", 0.5,
+        "LIFETIME", 4,
+        "W", 50.0,
+        "G", 1e8,
+        "BIAS", 0.5,    
+        "OUTDIR", exists("OUTDIR") ? OUTDIR else ".",
+        "ParamFile", exists("ParamFile") ? ParamFile else "params.json");
+
+    //defineConstant("K", 5);  // carrying-capacity per unit square (roughly)
+    //defineConstant("SD", sigma_i);  // sigma_D, the dispersal distance
+    //defineConstant("SI", sigma_i);  // sigma_I, the spatial interaction distance
+    //defineConstant("SM", SI);  // sigma_M, the mate choice distance
+    //defineConstant("L", 4);    // mean lifetime at stationarity
+    //defineConstant("W", 50.0);  // width and height of the simulated area
+    //defineConstant("G", 1e8);  // genome length
+    
+    if (fileExists(defaults.getValue("ParamFile"))){
+        local_params = Dictionary(paste(readFile(defaults.getValue("ParamFile")), sep="\n"));
+        defaults.addKeysAndValuesFrom(local_params);
+        defaults.setValue("read_from_paramfile", defaults.getValue("ParamFile"));
+   }    
+    
+     catn("-------------\n");
+    for (k in defaults.allKeys) {
+        if (!exists(k)) {
+            defineConstant(k, defaults.getValue(k));
+        } else {
+            defaults.setValue(k, executeLambda(paste(c(k, ";"), sep='')));
+        }
+        if (k != "README") {
+            catn(" " + k + ": " + defaults.getValue(k));
+        }
+    }
+    catn("-------------\n");
+    defineGlobal("params", defaults);
+    
+    setSeed(SEED);
+    defineConstant("FECUN", 1/LIFETIME); // mean fecundity
+    defineConstant("RHO", FECUN/((1+FECUN) * K)); // constant in spatial competition function
+
+    initializeMutationType("m1", 0.5, "g", 0.0, 2);
+    initializeGenomicElementType("g1", m1, 1.0);
+    initializeGenomicElement(g1, 0, G-1);
+    initializeMutationRate(0.0);
+    initializeRecombinationRate(THETA);
+
+    // spatial competition
+    initializeInteractionType(1, "xy", reciprocal=T, maxDistance=SI * 3);
+    i1.setInteractionFunction("n", 1.0/(2*PI*SI^2), SI);
+
+    // mate choice
+    initializeInteractionType(2, "xy", reciprocal=T, maxDistance=SM * 3);
+    i2.setInteractionFunction("n", 1.0/(2*PI*SM^2), SM);
+
+}
+
+reproduction() {
+    // choose our nearest neighbor as a mate, within the max distance
+    mate = i2.drawByStrength(individual, 1);
+    if (mate.size()) {
+        nOff = rpois(1, FECUN);
+        //individual.tag = individual.tag + nOff;  // DEBUG
+        for (i in seqLen(nOff)) {
+            pos = individual.spatialPosition + rnorm(2, BIAS, SD); // add biased dispersal
+            if (p1.pointInBounds(pos)) {
+                offspring = subpop.addCrossed(individual, mate);
+                offspring.setSpatialPosition(p1.pointReflected(pos));
+                offspring.tag = 0; // DEBUG
+            }
+        }
+    }
+    return;
+}
+
+1 early() {
+    sim.addSubpop("p1", asInteger(K * W * W));
+    p1.setSpatialBounds(c(0, 0, W, W));
+    p1.individuals.setSpatialPosition(p1.pointUniform(p1.individualCount));
+    // random initial positions
+    i1.evaluate(sim.subpopulations);
+
+    // header info
+    //cat("gen" + " " + "stage" + " " + "age" + " " + "density");
+    //catn(" " + "neighbor" + " " + "harm_neigh" + " " + "num_off" +
+    //  " " +"var_off"+" "+ "time");
+}
+
+early() { //competition
+    i1.evaluate(p1);
+    inds = p1.individuals;
+   competition = i1.localPopulationDensity(inds);
+    // mortality is based only on density
+   inds.fitnessScaling = 1 / (1 + RHO * competition);
+    // avoid edge effects
+    inds.fitnessScaling = inds.fitnessScaling * pmin(sqrt(inds.x/SI), 1.0) * pmin(sqrt(inds.y/SI), 1.0) * pmin(sqrt((W - inds.x)/SI), 1.0) * pmin(sqrt((W - inds.y)/SI), 1.0); // corner is bad
+}
+
+1: late() {
+    // to be ready for mate choice
+    i2.evaluate(p1);
+}
+
+
+
+1 early() {
+    defineConstant("simID", getSeed());
+}
+
+2: late() {
+
+     if((community.tick % 1e5)==0){
+        if(sim.treeSeqCoalesced()){
+             outname=OUTDIR + '_' + simID + '.trees';
+          sim.treeSeqOutput(outname, metadata=params);
+          sim.simulationFinished();
+      }
+    }
+} 
+
+2000000 late() {
+        outname=OUTDIR + '_' + simID + '.trees';
+        sim.treeSeqOutput(outname, metadata=params);
+        sim.simulationFinished();
+      }
