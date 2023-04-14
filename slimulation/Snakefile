@@ -12,36 +12,56 @@ output_dir = 'out/'
 
 jsons = os.path.join(output_dir, 'jsons/')
 treeouts = os.path.join(output_dir, 'trees/')
-zarrouts = os.path.join(output_dir, 'zarrs/')
+gtouts = os.path.join(output_dir, 'genotypes/')
 tsouts = os.path.join(output_dir, 'training_sets/')
+metaouts = os.path.join(output_dir, 'metadata/')
+locouts = os.path.join(output_dir, 'predlocs/')
+
 
 # wildcards
 sigmas = [0.5, 0.75, 1.25, 2.0]
 mus = [0.0, 0.5, 1.0, 1.5]
-replicates = np.arange(100)
+sim_replicates = np.arange(100)
+skews = [0.5, 0.6, 0.7, 0.8, 0.9]
+sampling = ['half','point']
+ts_replicates = np.arange(10)
 """
 sigmas=[0.5]
 mus = [0.75]
 replicates=[1]
 """
 
+# slimulation patterns
+slimout_pattern = "{sim_rep}_sigma_{sigma}_mu_{mu}"
+slimout_base = expand(slimout_pattern, sim_rep=sim_replicates, sigma=sigmas, mu=mus)
+seeds = rng.integers(0, int(1e10), len(slimout_base))
+slimout_base = [slimout_base[i] + '_' + str(seeds[i]) for i in range(len(slimout_base))]
 
-outpath_pattern = "{rep}_sigma_{sigma}_mu_{mu}"
-outpath_base = expand(outpath_pattern, rep=replicates, sigma=sigmas, mu=mus)
-seeds = rng.integers(0, int(1e10), len(outpath_base))
-outpath_base = [outpath_base[i] + '_' + str(seeds[i]) for i in range(len(outpath_base))]
+# genotype and metadata patterns
+gt_pattern = gtouts + "{sim_rep}_sigma_{sigma}_mu_{mu}_{n}.vcf"
+meta_pattern = metaouts + "{sim_rep}_sigma_{sigma}_mu_{mu}_{n}.txt"
+
+# training set patterns
+uniform_locpattern = "{sim_rep}_sigma_{sigma}_mu_{mu}_uniform_{n}"
+uniform_locbase = expand(uniform_locpattern, sim_rep=sim_replicates, sigma=sigmas, mu=mus, n=ts_replicates)
+skewed_locpattern = "{sim_rep}_sigma_{sigma}_mu_{mu}_{samp}_{skew}_{n}"
+skewed_locbase = expand(skewed_locpattern, sim_rep=sim_replicates, sigma=sigmas, mu=mus, skew=skews, n=ts_replicates)
+
 
 localrules: generate_json, all
 
 rule all:
-    input: [treeouts + outpath_base[i] + '.trees' for i in range(len(outpath_base))]
+    input: [locouts + i + '_predlocs.txt' for i in uniformlocbase] + [locouts + i + '_predlocs.txt' for i in skewedlocbase]
+    #input: [treeouts + slimout_base[i] + '.trees' for i in range(len(slimout_base))]
+
+
 
 rule generate_json:
     params:
         sigma='{sigma}',
         mu='{mu}',
         seed='{seed}'
-    output: jsons + outpath_pattern + '_{seed}.json'
+    output: jsons + slimout_pattern + '_{seed}.json'
     run:
         info = {'SEED':int(params.seed),
                 'SI':float(params.sigma),
@@ -52,12 +72,11 @@ rule generate_json:
             json.dump(info, outfile)
 
 rule slimulate:
-    input: jsons + outpath_pattern + '_{seed}.json'
+    input: jsons + slimout_pattern + '_{seed}.json'
     params:
-        outdir = treeouts + outpath_pattern,
+        outdir = treeouts + slimout_pattern,
         seed = '{seed}'
-    output:
-        treeouts + outpath_pattern + '_{seed}.trees'
+    output: treeouts + slimout_pattern + '_{seed}.trees'
     conda: 'SLiM'
     resources: 
         time='48:00:00'
@@ -65,3 +84,41 @@ rule slimulate:
         '''
         slim -d 'ParamFile="{input}"' -d 'OUTDIR="{params.outdir}"' ../scripts/biased_migration.slim
         '''
+
+rule process_ts:
+    input: treeouts + slimout_pattern + '_{seed}.trees'
+    output: 
+        uniforms = tsouts + 'uniform/' + uniformlocpattern + '.txt'
+        skews = tsouts + skewed_locpattern + '.txt'
+    conda: 'pyslim'
+    resources:
+        time='1:00:00'
+    shell: 'python ../scripts/sample_treeseq.py {input}'
+
+rule locate_uniform:
+    input: 
+        trainingset = tsouts + uniformlocpattern + '.txt',
+        genotype = gt_pattern
+    params: locouts + uniformlocpattern
+    output: locouts + uniformlocpattern + '_predlocs.txt'
+    conda: 'py39'
+    resources:
+        time='2:00:00',
+        partition='kerngpu'
+    shell: 'python ../../locator/scripts/locator.py --vcf {input.genotype} --sample_data {input.trainingset} --max_SNPs 100000 --out {params} --keep_weights'
+
+rule locate_skew:
+    input: 
+        trainingset = tsouts + skewed_locpattern + '.txt',
+        genotype = gt_pattern
+    params: locouts + skewed_locpattern
+    output: locouts + skewed_locpattern + '_predlocs.txt'
+    conda: 'py39'
+    resources:
+        time='2:00:00',
+        partition='kerngpu'
+    shell: 'python ../../locator/scripts/locator.py --vcf {input.genotype} --sample_data {input.trainingset} --max_SNPs 100000 --out {params} --keep_weights'
+
+
+
+
