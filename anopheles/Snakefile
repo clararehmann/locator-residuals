@@ -1,0 +1,66 @@
+import numpy as np
+import os, sys, subprocess, glob, json
+from pathlib import Path
+
+rng = np.random.default_rng(seed=666)
+
+# running Locator on ag1000g data
+agpath = '/sietch_colab/crehmann/vo_agam_release/v3'
+gtpath = os.path.join(agpath, 'snp_genotypes_all', '{chrom}')
+chromosomes = ['2L','2R','3L','3R','X']
+training_sets = np.arange(10)
+
+def get_idle_gpu(n_gpus=1):
+    """
+    Utility function which uses the gpustat module to select the
+    least busy GPU that is available and then sets the
+    CUDA_VISIBLE_DEVICES environment variable so that
+    only that GPU is used
+    """
+    try:
+        stats = gpustat.GPUStatCollection.new_query()
+
+        ids = map(lambda gpu: int(gpu.entry["index"]), stats)
+        ratios = map(
+            lambda gpu: float(gpu.entry["memory.used"])
+            / float(gpu.entry["memory.total"]),
+            stats,
+        )
+        GPUorder = sorted(zip(ids, ratios), key=lambda x: x[1])
+        GPUorder = [str(g[0]) for g in GPUorder[:n_gpus]]
+        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
+            [str(g) for g in GPUorder[:n_gpus]]
+        )
+        return GPUorder
+    except Exception:
+        return []
+
+rule all:
+    input: expand( 'predlocs/{chrom}_{ts}_complete.txt', chrom=chromosomes, ts=training_sets )
+
+rule sortdata:
+    output:
+        metadata = 'ag1000g_v3_gambiae.txt',
+        genotype = expand( gtpath + '/calldata/GT', chrom=chromosomes ),
+        samples = expand( gtpath + '/samples', chrom=chromosomes )
+    conda: 'py39'
+    shell: 'python ../scripts/ag1000g_data_sort.py'
+
+rule make_ts:
+    input: 'ag1000g_v3_gambiae.txt'
+    output: expand( 'training_sets/ag1000g_ts_{ts}.txt', ts=training_sets )
+    conda: 'py39'
+    shell: 'python ../scripts/make_empirical_ts.py --metadata {input} --pred_prop 0.1 --out training_sets/ag1000g_ts'
+
+rule run_locator:
+    input:
+        gt = gtpath,
+        ts = 'training_sets/ag1000g_ts_{ts}.txt'
+    params: get_idle_gpu()
+    output: 'predlocs/{chrom}_{ts}_complete.txt'
+    conda: 'tensorflow'
+    log: 'logs/{chrom}_{ts}.log'
+    shell: 
+        """
+        CUDA_VISIBLE_DEVICES={params} python ../../locator/scripts/locator.py --sample_data {input.ts} --zarr {input.gt} --out predlocs/{wildcards.chrom}_{wildcards.ts} --windows --window_size 2000000 &> {log}
+        """

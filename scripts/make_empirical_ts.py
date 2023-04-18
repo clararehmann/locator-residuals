@@ -13,9 +13,11 @@ args=parser.parse_args()
 meta=pd.read_csv(args.metadata,sep='\t')
 ind=np.arange(len(meta))
 np.random.shuffle(ind)
-na_count=int(len(meta)/((1-args.pred_prop)*len(meta)))
+na_count = int(len(meta) / int(args.pred_prop*len(meta)))
 groups=np.array_split(ind,na_count)
+
 for g in range(len(groups)):
+    print(g)
     meta=pd.read_csv(args.metadata,sep='\t')
     for i in groups[g]:
         meta.loc[i,'x']=np.nan
