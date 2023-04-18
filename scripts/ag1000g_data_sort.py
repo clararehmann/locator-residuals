@@ -1,5 +1,5 @@
 import pandas as pd, numpy as np
-import zarr, os, dask, allel
+import zarr, os, dask, allel, subprocess
 
 agpath = '/sietch_colab/crehmann/vo_agam_release/v3'
 
@@ -22,6 +22,7 @@ ag1000g_metadata = pd.DataFrame({'sampleID':ag1000g_metadata.sample_id,
 
 ag1000g_metadata.to_csv('data/ag1000g/ag1000g_v3_gambiae.txt', sep='\t')
 
+
 # combine genotype data across cohorts
 if os.path.exists(os.path.join(agpath, 'snp_genotypes_all')):
     pass
@@ -37,6 +38,11 @@ def concat_zarr(gt, samples, cohort, chromosome):
     return gt, samples
 
 for chromosome in ['2L','2R','3L','3R','X']:
+    # copy positions over
+    os.makedirs(os.path.join(agpath, 'snp_genotypes_all', chromosome, 'variants'), exist_ok=True)
+    ps = f'cp -r {os.path.join(agpath, "snp_genotypes/all/sites", chromosome, "variants/POS")} {os.path.join(agpath, "snp_genotypes_all", chromosome, "variants")}'
+    subprocess.run(ps, shell=True)
+ 
     print(f'concatenating chromosome {chromosome}')
     cohorts = os.listdir(os.path.join(agpath, 'metadata/species_calls_aim_20220528'))
     gt = zarr.open(os.path.join(agpath, 'snp_genotypes/all', cohorts[0], chromosome, 'calldata/GT'))

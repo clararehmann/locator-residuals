@@ -1,0 +1,69 @@
+import numpy as np
+import os, sys, subprocess, glob, json
+from pathlib import Path
+
+rng = np.random.default_rng(seed=666)
+
+# running Locator on Pf7 data
+pfpath = '/sietch_colab/crehmann/pf7'
+chromosomes = [str(i) if i > 9 else '0'+str(i) for i in np.arange(1, 15)]
+training_sets = np.arange(20)
+
+def get_idle_gpu(n_gpus=1):
+    """
+    Utility function which uses the gpustat module to select the
+    least busy GPU that is available and then sets the
+    CUDA_VISIBLE_DEVICES environment variable so that
+    only that GPU is used
+    """
+    try:
+        stats = gpustat.GPUStatCollection.new_query()
+
+        ids = map(lambda gpu: int(gpu.entry["index"]), stats)
+        ratios = map(
+            lambda gpu: float(gpu.entry["memory.used"])
+            / float(gpu.entry["memory.total"]),
+            stats,
+        )
+        GPUorder = sorted(zip(ids, ratios), key=lambda x: x[1])
+        GPUorder = [str(g[0]) for g in GPUorder[:n_gpus]]
+        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
+            [str(g) for g in GPUorder[:n_gpus]]
+        )
+        return GPUorder
+    except Exception:
+        return []
+
+rule all:
+    input: expand( 'predlocs/{chrom}_{ts}_complete.txt', chrom=chromosomes, ts=training_sets )
+
+rule sortdata:
+    output: 'pf7_africa_QC.txt'
+    conda: 'py39'
+    shell: 'python ../scripts/pf7_data_sort.py'
+
+rule makezarr:
+    params: '/sietch_colab/crehmann/pf7/Pf3D7_{chrom}_v3.pf7.vcf.gz'
+    output: directory('/sietch_colab/crehmann/pf7/genotypes_zarr/Pf3D7_{chrom}')
+    conda: 'tensorflow'
+    shell: 'python ../../locator/scripts/vcf_to_zarr.py --vcf {params} --zarr {output}'
+
+
+rule make_ts:
+    input: 'pf7_africa_QC.txt'
+    output: expand( 'training_sets/pf7_ts_{ts}.txt', ts=training_sets )
+    conda: 'py39'
+    shell: 'python ../scripts/make_empirical_ts.py --metadata {input} --pred_prop 0.05 --out training_sets/pf7_ts'
+
+rule run_locator:
+    input:
+        gt = '/sietch_colab/crehmann/pf7/genotypes_zarr/Pf3D7_{chrom}',
+        ts = 'training_sets/pf7_ts_{ts}.txt'
+    output: 'predlocs/{chrom}_{ts}_complete.txt'
+    params: get_idle_gpu()
+    conda: 'tensorflow'
+    log: 'logs/{chrom}_{ts}.log'
+    shell: 
+        """
+        CUDA_VISIBLE_DEVICES={params} python ../../locator/scripts/locator.py --sample_data {input.ts} --zarr {input.gt} --out predlocs/{wildcards.chrom}_{wildcards.ts} --windows --window_size 500000 &> {log}
+        """
