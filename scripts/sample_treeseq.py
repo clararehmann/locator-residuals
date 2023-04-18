@@ -18,9 +18,8 @@ for f in [outpath, metadatapath, vcfpath, tspath]:
     subprocess.run(f'mkdir -p {f}', shell=True)
 
 tree = sys.argv[1]
-sim, sigma, mu, seed = np.array(tree.split('/')[-1].replace('.trees','').split('_'))[[0,2,4,5]].astype(float)
+sim, sigma, mu = np.array(tree.split('/')[-1].replace('.trees','').split('_'))[[0,2,4]].astype(float)
 sim = int(sim)
-seed = int(seed)
 
 # process each tree sequence 10x
 for n in range(Nreps):
