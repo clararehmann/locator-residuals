@@ -1,3 +1,4 @@
 #!/bin/bash
 
-snakemake -j 100 --use-conda --rerun-incomplete --keep-going $1
+snakemake --unlock
+snakemake -j 5 --use-conda --rerun-incomplete --keep-going $1
