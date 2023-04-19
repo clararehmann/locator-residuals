@@ -1,5 +1,5 @@
 import numpy as np
-import os, sys, subprocess, glob, json
+import os, sys, subprocess, glob, json, gpustat
 from pathlib import Path
 
 rng = np.random.default_rng(seed=666)
@@ -30,7 +30,7 @@ def get_idle_gpu(n_gpus=1):
         os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
             [str(g) for g in GPUorder[:n_gpus]]
         )
-        return GPUorder
+        return GPUorder[0]
     except Exception:
         return []
 
@@ -45,7 +45,7 @@ rule sortdata:
 rule makezarr:
     params: '/sietch_colab/crehmann/pf7/Pf3D7_{chrom}_v3.pf7.vcf.gz'
     output: directory('/sietch_colab/crehmann/pf7/genotypes_zarr/Pf3D7_{chrom}')
-    conda: 'tensorflow'
+    conda: 'tf-test'
     shell: 'python ../../locator/scripts/vcf_to_zarr.py --vcf {params} --zarr {output}'
 
 
@@ -61,9 +61,9 @@ rule run_locator:
         ts = 'training_sets/pf7_ts_{ts}.txt'
     output: 'predlocs/{chrom}_{ts}_complete.txt'
     params: get_idle_gpu()
-    conda: 'tensorflow'
+    conda: 'tf-test'
     log: 'logs/{chrom}_{ts}.log'
     shell: 
         """
-        CUDA_VISIBLE_DEVICES={params} python ../../locator/scripts/locator.py --sample_data {input.ts} --zarr {input.gt} --out predlocs/{wildcards.chrom}_{wildcards.ts} --windows --window_size 500000 &> {log}
+        python ../../locator/scripts/locator.py --sample_data {input.ts} --zarr {input.gt} --out predlocs/{wildcards.chrom}_{wildcards.ts} --windows --window_size 500000 --gpu_number {params} &> {log}
         """
