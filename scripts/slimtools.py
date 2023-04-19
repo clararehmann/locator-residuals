@@ -138,9 +138,10 @@ def sample_ts(ts,
     if sampling not in ['uniform','point','half']:
         sys.exit()
     else:
+        print(sampling, training_set)
         # uniformly sample prediction set
         pred_ind, pred_samp, pred_locs = uniform_sample(ts, prediction_set, max_distance)
-
+        print(len(pred_ind))
         # sample training set
         if sampling=='uniform':
             train_inds, train_samp, train_locs = uniform_sample(ts, training_set, max_distance, exclude_ind=pred_ind)

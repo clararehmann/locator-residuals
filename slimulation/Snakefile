@@ -114,7 +114,8 @@ rule locate_uniform:
     conda: 'py39'
     resources:
         time='2:00:00',
-        partition='kerngpu'
+        partition='kerngpu',
+        mem_mb=30000
     shell: 'python ../../locator/scripts/locator.py --zarr {input.genotype} --sample_data {input.trainingset} --max_SNPs 100000 --out {params} --keep_weights'
 
 rule locate_skew:
@@ -126,7 +127,8 @@ rule locate_skew:
     conda: 'py39'
     resources:
         time='2:00:00',
-        partition='kerngpu'
+        partition='kerngpu',
+        mem_mb=30000
     shell: 'python ../../locator/scripts/locator.py --zarr {input.genotype} --sample_data {input.trainingset} --max_SNPs 100000 --out {params} --keep_weights'
 
 
