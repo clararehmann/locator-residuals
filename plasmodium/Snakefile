@@ -1,5 +1,5 @@
 import numpy as np
-import os, sys, subprocess, glob, json
+import os, sys, subprocess, glob, json, gpustat
 from pathlib import Path
 
 rng = np.random.default_rng(seed=666)
