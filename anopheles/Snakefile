@@ -1,48 +1,40 @@
 import numpy as np
-import os, sys, subprocess, glob, json, gpustat
+import os, sys, subprocess, glob, json
 from pathlib import Path
+
+os.makedirs('logs', exist_ok=True)
 
 rng = np.random.default_rng(seed=666)
 
 # running Locator on ag1000g data
-agpath = '/sietch_colab/crehmann/vo_agam_release/v3'
-gtpath = os.path.join(agpath, 'snp_genotypes_all', '{chrom}')
+gtpath = os.path.join('snp_genotypes_all', '{chrom}')
+
+# debug params
+"""
+chromosomes = ['2L']
+training_sets = [0]
+
+"""
 chromosomes = ['2L','2R','3L','3R','X']
 training_sets = np.arange(10)
-
-def get_idle_gpu(n_gpus=1):
-    """
-    Utility function which uses the gpustat module to select the
-    least busy GPU that is available and then sets the
-    CUDA_VISIBLE_DEVICES environment variable so that
-    only that GPU is used
-    """
-    try:
-        stats = gpustat.GPUStatCollection.new_query()
-
-        ids = map(lambda gpu: int(gpu.entry["index"]), stats)
-        ratios = map(
-            lambda gpu: float(gpu.entry["memory.used"])
-            / float(gpu.entry["memory.total"]),
-            stats,
-        )
-        GPUorder = sorted(zip(ids, ratios), key=lambda x: x[1])
-        GPUorder = [str(g[0]) for g in GPUorder[:n_gpus]]
-        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
-            [str(g) for g in GPUorder[:n_gpus]]
-        )
-        return GPUorder[0]
-    except Exception:
-        return []
 
 rule all:
     input: expand( 'predlocs/{chrom}_{ts}_complete.txt', chrom=chromosomes, ts=training_sets )
 
+rule download:
+    output: 'download_complete.txt'
+    conda: 'gsutil'
+    resources:
+        runtime=300
+    shell: 'bash ../scripts/ag1000g_download.sh'
+
 rule sortdata:
+    input: 'download_complete.txt'
     output:
         metadata = 'ag1000g_v3_gambiae.txt',
-        genotype = expand( gtpath + '/calldata/GT', chrom=chromosomes ),
-        samples = expand( gtpath + '/samples', chrom=chromosomes )
+        zarr = [directory(i) for i in expand( gtpath, chrom=chromosomes)],
+        genotype = [directory(i) for i in expand( gtpath + '/calldata/GT', chrom=chromosomes )],
+        samples = [directory(i) for i in expand( gtpath + '/samples', chrom=chromosomes )]
     conda: 'py39'
     shell: 'python ../scripts/ag1000g_data_sort.py'
 
@@ -54,13 +46,19 @@ rule make_ts:
 
 rule run_locator:
     input:
-        gt = gtpath,
+        gt = 'snp_genotypes_all/{chrom}/',
         ts = 'training_sets/ag1000g_ts_{ts}.txt'
-    params: get_idle_gpu()
     output: 'predlocs/{chrom}_{ts}_complete.txt'
-    conda: 'tf-test'
+    conda: 'locating'
+    resources: 
+        runtime=300,
+        mem_mb=200000,
+        partition='gpu2',
+        gpus=1,
+        constraint='gpu-10gb'
     log: 'logs/{chrom}_{ts}.log'
     shell: 
         """
-        python ../../locator/scripts/locator.py --sample_data {input.ts} --zarr {input.gt} --out predlocs/{wildcards.chrom}_{wildcards.ts} --windows --window_size 2000000 --gpu_number {params} &> {log}
+        module load cuda/11.5.1
+        python ../scripts/locator.py --sample_data {input.ts} --zarr {input.gt} --out predlocs/{wildcards.chrom}_{wildcards.ts} --windows --window_size 2000000 &> {log}
         """

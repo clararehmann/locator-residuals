@@ -5,6 +5,9 @@
 *.out
 *.err
 
+# genotype files
+*genotype*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
