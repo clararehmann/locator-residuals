@@ -16,7 +16,7 @@ training_sets=[0]
 
 """
 rule all:
-    input: expand( 'predlocs/{chrom}_{ts}_complete.txt', chrom=chromosomes, ts=training_sets )
+    input: ['pf7_africa_centroids.txt', 'pf7_africa_weighted_centroids.txt']
 
 rule sortdata:
     output: 'pf7_africa_QC.txt'
@@ -33,7 +33,7 @@ rule run_locator:
     input:
         gt = 'pf7_genotypes/Pf3D7_{chrom}',
         ts = 'training_sets/pf7_ts_{ts}.txt'
-    output: 'predlocs/{chrom}_{ts}_complete.txt'
+    output: 'out/{chrom}_{ts}_complete.txt'
     conda: 'locating'
     resources:
         #slurm_extra="--partition=gpu2 --gpus=1 --constraint=gpu-10gb --time=6:00:00 --nodes=1 --mem=200G"
@@ -48,3 +48,35 @@ rule run_locator:
         module load cuda/11.5.1
         python ../../locator/scripts/locator.py --sample_data {input.ts} --zarr {input.gt} --out predlocs/{wildcards.chrom}_{wildcards.ts} --windows --window_size 500000 &> {log}
         """
+rule run_weighted:
+    input:
+        gt = 'pf7_genotypes/Pf3D7_{chrom}',
+        ts = 'training_sets/pf7_ts_{ts}.txt'
+    output: 'weighted/{chrom}_{ts}_complete.txt'
+    conda: 'locating'
+    resources:
+        runtime=300,
+        partition='gpu2',
+        mem_mb=200000,
+        gpus=1,
+        constraint='gpu-10gb'
+    log: 'logs/{chrom}_{ts}_weighted.log'
+    shell:
+        """
+        module load cuda/11.5.1
+        python ../../locator/scripts/locator.py --sample_data {input.ts} --zarr {input.gt} --output weighted/{wildcards.chrom}_{wildcards.ts} --windows --window_size 500000 --weight_samples --bandwidth 100 &> {log}
+        """
+
+rule plot_locator:
+    input: expand( 'out/{chrom}_{ts}_complete.txt', chrom=chromosomes, ts=training_sets )
+    output: 'pf7_africa_centroids.txt'
+    conda: 'rspatial'
+    log: 'logs/centroids.log'
+    shell: 'Rscript ../../locator/scripts/plot_locator.R --infile predlocs --sample_data pf7_africa_QC.txt --out pf7_africa --error --longlat'
+
+rule plot_weighted:
+    input: expand( 'weighted/{chrom}_{ts}_complete.txt', chrom=chromosomes, ts=training_sets )
+    output: 'pf7_africa_weighted_centroids.txt'
+    conda: 'rspatial'
+    log: 'logs/weighted_centroids.log'
+    shell: 'Rscript ../../locator/scripts/plot_locator.R --infile predlocs --sample_data pf7_africa_QC.txt --out pf7_africa_weighted --error --longlat'

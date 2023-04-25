@@ -51,7 +51,7 @@ rule run_locator:
     output: 'predlocs/{chrom}_{ts}_complete.txt'
     conda: 'locating'
     resources: 
-        runtime=300,
+        runtime=1000,
         mem_mb=200000,
         partition='gpu2',
         gpus=1,
