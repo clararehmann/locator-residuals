@@ -1,53 +1,27 @@
 import numpy as np
-import os, sys, subprocess, glob, json, gpustat
+import os, sys, subprocess, glob, json
 from pathlib import Path
+
+os.makedirs('logs', exist_ok=True)
 
 rng = np.random.default_rng(seed=666)
 
+"""
 # running Locator on Pf7 data
-pfpath = '/sietch_colab/crehmann/pf7'
 chromosomes = [str(i) if i > 9 else '0'+str(i) for i in np.arange(1, 15)]
 training_sets = np.arange(20)
+"""
 
-def get_idle_gpu(n_gpus=1):
-    """
-    Utility function which uses the gpustat module to select the
-    least busy GPU that is available and then sets the
-    CUDA_VISIBLE_DEVICES environment variable so that
-    only that GPU is used
-    """
-    try:
-        stats = gpustat.GPUStatCollection.new_query()
-
-        ids = map(lambda gpu: int(gpu.entry["index"]), stats)
-        ratios = map(
-            lambda gpu: float(gpu.entry["memory.used"])
-            / float(gpu.entry["memory.total"]),
-            stats,
-        )
-        GPUorder = sorted(zip(ids, ratios), key=lambda x: x[1])
-        GPUorder = [str(g[0]) for g in GPUorder[:n_gpus]]
-        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
-            [str(g) for g in GPUorder[:n_gpus]]
-        )
-        return GPUorder[0]
-    except Exception:
-        return []
+chromosomes=['01']
+training_sets=[0]
 
 rule all:
-    input: expand( 'predlocs/{chrom}_{ts}_complete.txt', chrom=chromosomes, ts=training_sets )
+    input: ['pf7_africa_centroids.txt', 'pf7_africa_weighted_centroids.txt']
 
 rule sortdata:
     output: 'pf7_africa_QC.txt'
     conda: 'py39'
     shell: 'python ../scripts/pf7_data_sort.py'
-
-rule makezarr:
-    params: '/sietch_colab/crehmann/pf7/Pf3D7_{chrom}_v3.pf7.vcf.gz'
-    output: directory('/sietch_colab/crehmann/pf7/genotypes_zarr/Pf3D7_{chrom}')
-    conda: 'tf-test'
-    shell: 'python ../../locator/scripts/vcf_to_zarr.py --vcf {params} --zarr {output}'
-
 
 rule make_ts:
     input: 'pf7_africa_QC.txt'
@@ -57,13 +31,52 @@ rule make_ts:
 
 rule run_locator:
     input:
-        gt = '/sietch_colab/crehmann/pf7/genotypes_zarr/Pf3D7_{chrom}',
+        gt = 'pf7_genotypes/Pf3D7_{chrom}',
         ts = 'training_sets/pf7_ts_{ts}.txt'
-    output: 'predlocs/{chrom}_{ts}_complete.txt'
-    params: get_idle_gpu()
-    conda: 'tf-test'
+    output: 'out/{chrom}_{ts}_complete.txt'
+    conda: 'locating'
+    resources:
+        #slurm_extra="--partition=gpu2 --gpus=1 --constraint=gpu-10gb --time=6:00:00 --nodes=1 --mem=200G"
+        runtime=300,
+        partition='gpu2',
+        mem_mb=200000,
+        gpus=1,
+        constraint='gpu-10gb'
     log: 'logs/{chrom}_{ts}.log'
     shell: 
         """
-        python ../../locator/scripts/locator.py --sample_data {input.ts} --zarr {input.gt} --out predlocs/{wildcards.chrom}_{wildcards.ts} --windows --window_size 500000 --gpu_number {params} &> {log}
+        module load cuda/11.5.1
+        python ../../locator/scripts/locator.py --sample_data {input.ts} --zarr {input.gt} --out predlocs/{wildcards.chrom}_{wildcards.ts} --windows --window_size 500000 &> {log}
         """
+rule run_weighted:
+    input:
+        gt = 'pf7_genotypes/Pf3D7_{chrom}',
+        ts = 'training_sets/pf7_ts_{ts}.txt'
+    output: 'weighted/{chrom}_{ts}_complete.txt'
+    conda: 'locating'
+    resources:
+        runtime=300,
+        partition='gpu2',
+        mem_mb=200000,
+        gpus=1,
+        constraint='gpu-10gb'
+    log: 'logs/{chrom}_{ts}_weighted.log'
+    shell:
+        """
+        module load cuda/11.5.1
+        python ../../locator/scripts/locator.py --sample_data {input.ts} --zarr {input.gt} --out weighted/{wildcards.chrom}_{wildcards.ts} --windows --window_size 500000 --weight_samples 'kernel density' --bandwidth 100 &> {log}
+        """
+
+rule plot_locator:
+    input: expand( 'out/{chrom}_{ts}_complete.txt', chrom=chromosomes, ts=training_sets )
+    output: 'pf7_africa_centroids.txt'
+    conda: 'rspatial'
+    log: 'logs/centroids.log'
+    shell: 'Rscript ../../locator/scripts/plot_locator.R --infile predlocs --sample_data pf7_africa_QC.txt --out pf7_africa --error --longlat'
+
+rule plot_weighted:
+    input: expand( 'weighted/{chrom}_{ts}_complete.txt', chrom=chromosomes, ts=training_sets )
+    output: 'pf7_africa_weighted_centroids.txt'
+    conda: 'rspatial'
+    log: 'logs/weighted_centroids.log'
+    shell: 'Rscript ../../locator/scripts/plot_locator.R --infile weighted --sample_data pf7_africa_QC.txt --out pf7_africa_weighted --error --longlat'

@@ -47,6 +47,8 @@ for n in range(Nreps):
             all_samples.extend(half_df.sampleID)
             half_df.to_csv(os.path.join(tspath, f'{sim}_sigma_{sigma}_mu_{mu}_half_{skew}_{n}.txt'), sep='\t')
 
+        """
+        this doesnt work, oops!
         # simplify tree sequence to only relevant individuals
         all_samples = np.unique(all_samples)
         individual_ids = [int(i.replace('tsk_','')) for i in all_samples]
@@ -54,7 +56,7 @@ for n in range(Nreps):
         for i in individual_ids:
             nodes.extend(ts.individual(i).nodes)
         ts = ts.simplify(nodes)
-        
+        """        
         # save individual locations
         metadata = sample_locations(ts)
         metadata.to_csv(os.path.join(metadatapath, f'{sim}_sigma_{sigma}_mu_{mu}_{n}.txt'), sep='\t')
@@ -63,4 +65,4 @@ for n in range(Nreps):
         treepath = os.path.join(vcfpath, f'{sim}_sigma_{sigma}_mu_{mu}_{n}.vcf')
         
         with open(treepath, 'w') as f:
-            ts.write_vcf(f, individual_names=all_samples)
+            ts.write_vcf(f)
