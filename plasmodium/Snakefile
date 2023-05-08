@@ -6,6 +6,7 @@ os.makedirs('logs', exist_ok=True)
 
 rng = np.random.default_rng(seed=666)
 
+"""
 # running Locator on Pf7 data
 chromosomes = [str(i) if i > 9 else '0'+str(i) for i in np.arange(1, 15)]
 training_sets = np.arange(20)
@@ -14,7 +15,6 @@ training_sets = np.arange(20)
 chromosomes=['01']
 training_sets=[0]
 
-"""
 rule all:
     input: ['pf7_africa_centroids.txt', 'pf7_africa_weighted_centroids.txt']
 
@@ -64,7 +64,7 @@ rule run_weighted:
     shell:
         """
         module load cuda/11.5.1
-        python ../../locator/scripts/locator.py --sample_data {input.ts} --zarr {input.gt} --output weighted/{wildcards.chrom}_{wildcards.ts} --windows --window_size 500000 --weight_samples --bandwidth 100 &> {log}
+        python ../../locator/scripts/locator.py --sample_data {input.ts} --zarr {input.gt} --out weighted/{wildcards.chrom}_{wildcards.ts} --windows --window_size 500000 --weight_samples 'kernel density' --bandwidth 100 &> {log}
         """
 
 rule plot_locator:
@@ -79,4 +79,4 @@ rule plot_weighted:
     output: 'pf7_africa_weighted_centroids.txt'
     conda: 'rspatial'
     log: 'logs/weighted_centroids.log'
-    shell: 'Rscript ../../locator/scripts/plot_locator.R --infile predlocs --sample_data pf7_africa_QC.txt --out pf7_africa_weighted --error --longlat'
+    shell: 'Rscript ../../locator/scripts/plot_locator.R --infile weighted --sample_data pf7_africa_QC.txt --out pf7_africa_weighted --error --longlat'

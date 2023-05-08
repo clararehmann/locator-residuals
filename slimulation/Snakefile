@@ -18,6 +18,7 @@ metaouts = os.path.join(output_dir, 'metadata/')
 locouts = os.path.join(output_dir, 'predlocs/')
 
 
+"""
 # wildcards
 sigmas = [0.5, 0.75, 1.25, 2.0]
 mus = [0.0, 0.5, 1.0, 1.5]
@@ -26,10 +27,14 @@ skews = [0.5, 0.6, 0.7, 0.8, 0.9]
 sampling = ['half','point']
 ts_replicates = np.arange(1)
 """
-sigmas=[0.5]
-mus = [0.75]
-replicates=[1]
-"""
+
+#2_sigma_1.25_mu_0.5
+sigmas=[1.25]
+mus = [0.5]
+sim_replicates=[2]
+skews = [0.9]
+sampling = ['point', 'half']
+ts_replicates=[0]
 
 # slimulation patterns
 slimout_pattern = "{sim_rep}_sigma_{sigma}_mu_{mu}"
@@ -103,8 +108,11 @@ rule ts_to_zarr:
     conda: 'pyslim'
     resources:
         mem_mb=30000
-    shell: 'python ../../locator/scripts/vcf_to_zarr.py --vcf {input} --zarr {output}'
-
+    shell: 
+        """
+        python ../../locator/scripts/vcf_to_zarr.py --vcf {input} --zarr {output}
+        rm {input}
+        """
 rule locate_uniform:
     input: 
         trainingset = tsouts + uniform_locpattern + '.txt',

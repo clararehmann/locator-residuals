@@ -48,7 +48,7 @@ rule run_locator:
     input:
         gt = 'snp_genotypes_all/{chrom}/',
         ts = 'training_sets/ag1000g_ts_{ts}.txt'
-    output: 'predlocs/{chrom}_{ts}_complete.txt'
+    output: 'out/{chrom}_{ts}_complete.txt'
     conda: 'locating'
     resources: 
         runtime=1000,
@@ -60,5 +60,37 @@ rule run_locator:
     shell: 
         """
         module load cuda/11.5.1
-        python ../scripts/locator.py --sample_data {input.ts} --zarr {input.gt} --out predlocs/{wildcards.chrom}_{wildcards.ts} --windows --window_size 2000000 &> {log}
+        python ../scripts/locator.py --sample_data {input.ts} --zarr {input.gt} --out out/{wildcards.chrom}_{wildcards.ts} --windows --window_size 2000000 &> {log}
         """
+rule run_weighted:
+    input:
+        gt = 'snp_genotypes_all/{chrom}/',
+        ts = 'training_sets/ag1000g_ts_{ts}.txt'
+    output: 'weighted/{chrom}_{ts}_complete.txt'
+    conda: 'locating'
+    resources:
+        runtime=1000,
+        partition='gpu2',
+        mem_mb=200000,
+        gpus=1,
+        constraint='gpu-10gb'
+    log: 'logs/{chrom}_{ts}_weighted.log'
+    shell:
+        """ 
+        module load cuda/11.5.1 
+        python ../../locator/scripts/locator.py --sample_data {input.ts} --zarr {input.gt} --out weighted/{wildcards.chrom}_{wildcards.ts} --windows --window_size 2000000 --weight_samples 'kernel density' --bandwidth 100 &> {log}
+        """ 
+
+rule plot_locator:
+    input: expand( 'out/{chrom}_{ts}_complete.txt', chrom=chromosomes, ts=training_sets )
+    output: 'ag1000g_centroids.txt'
+    conda: 'rspatial'
+    log: 'logs/centroids.log'
+    shell: 'Rscript ../../locator/scripts/plot_locator.R --infile out --sample_data ag1000g_v3_gambiae.txt --out ag1000g --error --longlat'
+
+rule plot_weighted:
+    input: expand( 'weighted/{chrom}_{ts}_complete.txt', chrom=chromosomes, ts=training_sets )
+    output: 'ag1000g_weighted_centroids.txt'
+    conda: 'rspatial'
+    log: 'logs/weighted_centroids.log'
+    shell: 'Rscript ../../locator/scripts/plot_locator.R --infile weighted --sample_data ag1000g_v3_gambiae.txt --out ag1000g_weighted --error --longlat'

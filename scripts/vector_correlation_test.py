@@ -58,8 +58,8 @@ def distance_matrix(df1, df2, max_distance=10):
     (for pairing samples)
     """
     # stack xy values
-    xy1 = np.stack((df1.x, df1.y), axis=1)
-    xy2 = np.stack((df2.x, df2.y), axis=1)
+    xy1 = np.stack((df1['x'], df1['y']), axis=1)
+    xy2 = np.stack((df2['x'], df2['y']), axis=1)
     # KDTrees
     tree1 = KDTree(xy1)
     tree2 = KDTree(xy2)
@@ -109,10 +109,10 @@ def get_vectors(df1, df2, idxs1, idxs2):
     for i in range(len(idxs1)):
         idx1 = idxs1[i]
         idx2 = idxs2[i]
-        u1.append(df1.loc[idx1, 'gc_x'] - df1.loc[idx1, 'x'])
-        v1.append(df1.loc[idx1, 'gc_y'] - df1.loc[idx1, 'y'])
-        u2.append(df2.loc[idx2, 'gc_x'] - df2.loc[idx2, 'x'])
-        v2.append(df2.loc[idx2, 'gc_y'] - df2.loc[idx2, 'y'])
+        u1.append(df1.loc[idx1, 'kd_x'] - df1.loc[idx1, 'x'])
+        v1.append(df1.loc[idx1, 'kd_y'] - df1.loc[idx1, 'y'])
+        u2.append(df2.loc[idx2, 'kd_x'] - df2.loc[idx2, 'x'])
+        v2.append(df2.loc[idx2, 'kd_y'] - df2.loc[idx2, 'y'])
 
     return u1, v1, u2, v2
 
@@ -127,8 +127,8 @@ def get_angles(df1, df2, idxs1, idxs2):
         idx1 = idxs1[i]
         idx2 = idxs2[i]
 
-        a1.append(math.degrees(math.atan2((df1.loc[idx1, 'gc_x'] - df1.loc[idx1, 'x']), (df1.loc[idx1, 'gc_y'] - df1.loc[idx1, 'y']))))
-        a2.append(math.degrees(math.atan2((df2.loc[idx2, 'gc_x'] - df2.loc[idx2, 'x']), (df2.loc[idx2, 'gc_y'] - df2.loc[idx2, 'y']))))
+        a1.append(math.degrees(math.atan2((df1.loc[idx1, 'kd_x'] - df1.loc[idx1, 'x']), (df1.loc[idx1, 'kd_y'] - df1.loc[idx1, 'y']))))
+        a2.append(math.degrees(math.atan2((df2.loc[idx2, 'kd_x'] - df2.loc[idx2, 'x']), (df2.loc[idx2, 'kd_y'] - df2.loc[idx2, 'y']))))
 
     return a1, a2
 
@@ -143,14 +143,18 @@ def get_mags(df1, df2, idxs1, idxs2):
         idx1 = idxs1[i]
         idx2 = idxs2[i]
 
-        w1.append(np.hypot((df1.loc[idx1, 'gc_x'] - df1.loc[idx1, 'x']), (df1.loc[idx1, 'gc_y'] - df1.loc[idx1, 'y'])))
-        w2.append(np.hypot((df2.loc[idx2, 'gc_x'] - df2.loc[idx2, 'x']), (df2.loc[idx2, 'gc_y'] - df2.loc[idx2, 'y'])))
+        w1.append(np.hypot((df1.loc[idx1, 'kd_x'] - df1.loc[idx1, 'x']), (df1.loc[idx1, 'kd_y'] - df1.loc[idx1, 'y'])))
+        w2.append(np.hypot((df2.loc[idx2, 'kd_x'] - df2.loc[idx2, 'x']), (df2.loc[idx2, 'kd_y'] - df2.loc[idx2, 'y'])))
 
     return w1, w2
 
 # read in data
 ag = pd.read_csv(args.ag, sep='\t')
 pf = pd.read_csv(args.pf, sep='\t')
+# read plasmodium metadata
+pmd = pd.read_csv('plasmodium/pf7_africa_QC.txt', sep='\t')
+pf = pd.merge(pf, pmd, on='sampleID')
+
 # distance matrix
 distmat = distance_matrix(ag, pf)
  
