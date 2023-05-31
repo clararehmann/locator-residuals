@@ -151,9 +151,12 @@ def get_mags(df1, df2, idxs1, idxs2):
 # read in data
 ag = pd.read_csv(args.ag, sep='\t')
 pf = pd.read_csv(args.pf, sep='\t')
-# read plasmodium metadata
-pmd = pd.read_csv('plasmodium/pf7_africa_QC.txt', sep='\t')
+# read metadata
+pmd = pd.read_csv('data/pf7_africa_QC.txt', sep='\t')
 pf = pd.merge(pf, pmd, on='sampleID')
+agd = pd.read_csv('data/ag1000g_v3_gambiae.txt', sep='\t')
+ag = pd.merge(ag, agd, on='sampleID')
+
 
 # distance matrix
 distmat = distance_matrix(ag, pf)
