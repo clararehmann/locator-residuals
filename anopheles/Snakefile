@@ -19,7 +19,8 @@ chromosomes = ['2L','2R','3L','3R','X']
 training_sets = np.arange(10)
 
 rule all:
-    input: expand( 'predlocs/{chrom}_{ts}_complete.txt', chrom=chromosomes, ts=training_sets )
+    input: ['ag1000g_centroids.txt', 'ag1000g_weighted_centroids.txt']
+        #expand( 'predlocs/{chrom}_{ts}_complete.txt', chrom=chromosomes, ts=training_sets )
 
 rule download:
     output: 'download_complete.txt'

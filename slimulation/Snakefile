@@ -9,136 +9,78 @@ if os.path.exists('logs'):
 else:
     os.makedirs('logs/')
 output_dir = 'out/'
-
-jsons = os.path.join(output_dir, 'jsons/')
-treeouts = os.path.join(output_dir, 'trees/')
-gtouts = os.path.join(output_dir, 'genotypes/')
-tsouts = os.path.join(output_dir, 'training_sets/')
-metaouts = os.path.join(output_dir, 'metadata/')
-locouts = os.path.join(output_dir, 'predlocs/')
+zarr_pattern = '../../locator_work/locator_slim/zarrs/sigma_{sigma}_bias_{mu}/run_{rep}.zarr'
+gt_dir = os.path.join(output_dir, 'genotypes/')
+ts_dir = os.path.join(output_dir, 'training_sets/')
+metadata_dir = os.path.join(output_dir, 'metadata/')
+loc_dir = os.path.join(output_dir, 'predlocs/')
 
 
-"""
 # wildcards
-sigmas = [0.5, 0.75, 1.25, 2.0]
-mus = [0.0, 0.5, 1.0, 1.5]
-sim_replicates = np.arange(100)
-skews = [0.5, 0.6, 0.7, 0.8, 0.9]
-sampling = ['half','point']
-ts_replicates = np.arange(1)
-"""
+sigmas = [0.4, 0.6, 0.8, 1]
+mus = [0]
+#mus = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+sim_replicates = np.arange(10)
+skews = [0.6, 0.7, 0.8, 0.9]
+ts_replicates = np.arange(10)
 
-#2_sigma_1.25_mu_0.5
-sigmas=[1.25]
-mus = [0.5]
-sim_replicates=[2]
-skews = [0.9]
-sampling = ['point', 'half']
-ts_replicates=[0]
+mdpattern = "sigma_{sigma}_bias_{mu}_run_{rep}"
+fpattern = "sigma_{sigma}_bias_{mu}_run_{rep}_{tsrep}"
+files = expand(fpattern, sigma=sigmas, mu=mus, rep=sim_replicates, tsrep=ts_replicates)
+#files = [fpattern.replace("{sigma}", str(s)).replace("{mu}", str(m)).replace("{rep}", str(r)) if m < s else None for m in mus for s in sigmas for r in sim_replicates]
 
-# slimulation patterns
-slimout_pattern = "{sim_rep}_sigma_{sigma}_mu_{mu}"
-slimout_base = expand(slimout_pattern, sim_rep=sim_replicates, sigma=sigmas, mu=mus)
-seeds = rng.integers(0, int(1e10), len(slimout_base))
-slimout_base = [slimout_base[i] + '_' + str(seeds[i]) for i in range(len(slimout_base))]
-
-# genotype and metadata patterns
-gt_pattern = gtouts + "{sim_rep}_sigma_{sigma}_mu_{mu}_{n}.vcf"
-meta_pattern = metaouts + "{sim_rep}_sigma_{sigma}_mu_{mu}_{n}.txt"
-
-# training set patterns
-uniform_locpattern = "{sim_rep}_sigma_{sigma}_mu_{mu}_uniform_{n}"
-uniform_locbase = expand(uniform_locpattern, sim_rep=sim_replicates, sigma=sigmas, mu=mus, n=ts_replicates)
-skewed_locpattern = "{sim_rep}_sigma_{sigma}_mu_{mu}_{samp}_{skew}_{n}"
-skewed_locbase = expand(skewed_locpattern, sim_rep=sim_replicates, sigma=sigmas, mu=mus, samp=sampling, skew=skews, n=ts_replicates)
-
-
-localrules: generate_json, all
+localrules: all
 
 rule all:
-    input: [locouts + i + '_predlocs.txt' for i in uniform_locbase] + [locouts + i + '_predlocs.txt' for i in skewed_locbase]
-    #input: [treeouts + slimout_base[i] + '.trees' for i in range(len(slimout_base))]
+    input: expand(loc_dir + fpattern + '_uniform_predlocs.txt', sigma=sigmas, mu=mus, rep=sim_replicates, tsrep=ts_replicates) +
+            expand(loc_dir + fpattern + '_skew_{skew}_predlocs.txt', sigma=sigmas, mu=mus, rep=sim_replicates, skew=skews, tsrep=ts_replicates)
 
-
-
-rule generate_json:
-    params:
-        sigma='{sigma}',
-        mu='{mu}'#,
-#        seed=lambda wildcards: '{seed}'
-    output: jsons + slimout_pattern + '.json'#+ '_{seed}.json'
-    run:
-        info = {
-                'SI':float(params.sigma),
-                'SM':float(params.sigma),
-                'SD':float(params.sigma),
-                'BIAS':float(params.mu)} #'SEED':int(params.seed),
-        with open(str(output), 'w') as outfile:
-            json.dump(info, outfile)
-
-rule slimulate:
-    input: jsons + slimout_pattern + '.json'
-    params:
-        outdir = treeouts + slimout_pattern
-#        seed = '{seed}'
-    output: treeouts + slimout_pattern + '.trees'
-    conda: 'SLiM'
-    resources: 
-        time='48:00:00'
-    shell:
-        '''
-        slim -d 'ParamFile="{input}"' -d 'OUTDIR="{params.outdir}"' ../scripts/biased_migration.slim
-        '''
-
-rule process_ts:
-    input: treeouts + slimout_pattern + '.trees'
-    output: [(tsouts + uniform_locpattern + '.txt').replace('{n}', str(n)) for n in np.arange(1)] + #uniform ts
-            [(tsouts + skewed_locpattern + '.txt').replace('{n}', str(n)).replace('{samp}', sampling[0]).replace('{skew}', str(s)) for n in np.arange(1) for s in skews] +
-            [(tsouts + skewed_locpattern + '.txt').replace('{n}', str(n)).replace('{samp}', sampling[1]).replace('{skew}', str(s)) for n in np.arange(1) for s in skews] +
-            [gt_pattern.replace('{n}', str(n)) for n in np.arange(1)]
-
-    conda: 'pyslim'
-    resources:
-        time='1:00:00'
-    shell: 'python ../scripts/sample_treeseq.py {input}'
-
-rule ts_to_zarr:
-    input: [gt_pattern.replace('{n}', str(n)) for n in np.arange(1)]
-    output: [directory(gt_pattern.replace('{n}', str(n)).replace('.vcf','.zarr')) for n in np.arange(1)]
-    conda: 'pyslim'
-    resources:
-        mem_mb=30000
-    shell: 
-        """
-        python ../../locator/scripts/vcf_to_zarr.py --vcf {input} --zarr {output}
-        rm {input}
-        """
-rule locate_uniform:
+rule make_ts:
     input: 
-        trainingset = tsouts + uniform_locpattern + '.txt',
-        genotype = gt_pattern.replace('vcf','zarr')
-    params: locouts + uniform_locpattern
-    output: locouts + uniform_locpattern + '_predlocs.txt'
+        md = metadata_dir + mdpattern + '_metadata.txt',
+        gt = zarr_pattern
+    params: ts_dir + fpattern
+    output:
+        uniform = ts_dir + fpattern + '_uniform_ts.txt',
+        skews = [ts_dir + fpattern + '_skew_' + str(s) + '_ts.txt' for s in skews]
     conda: 'py39'
+    shell: 'python ../scripts/sample_training_set.py --metadata {input.md} --zarr {input.gt} --out {params}'
+
+rule locate_uniform:
+    input:
+        ts = ts_dir + fpattern + '_uniform_ts.txt',
+        gt = zarr_pattern
+    params: loc_dir + fpattern + '_uniform'
+    output: loc_dir + fpattern + '_uniform_predlocs.txt'
+    conda: 'locating'
     resources:
-        time='2:00:00',
-        partition='kerngpu',
-        mem_mb=30000
-    shell: 'python ../../locator/scripts/locator.py --zarr {input.genotype} --sample_data {input.trainingset} --max_SNPs 100000 --out {params} --keep_weights'
+        runtime=30,
+        mem_mb=300000,
+        partition='gpu2',
+        gpus=1,
+        constraint='gpu-10gb'
+    shell:
+        """
+        module load cuda/11.5.1
+        python ../../locator/scripts/locator.py --zarr {input.gt} --sample_data {input.ts} --max_SNPs 100000 --out {params} --keep_weights
+        """
 
 rule locate_skew:
     input: 
-        trainingset = tsouts + skewed_locpattern + '.txt',
-        genotype = gt_pattern.replace('vcf','zarr')
-    params: locouts + skewed_locpattern
-    output: locouts + skewed_locpattern + '_predlocs.txt'
-    conda: 'py39'
+        ts = ts_dir + fpattern + '_skew_{skew}_ts.txt',
+        gt = zarr_pattern
+    params: loc_dir + fpattern + '_skew_{skew}'
+    output: loc_dir + fpattern + '_skew_{skew}_predlocs.txt'
+    conda: 'locating'
     resources:
-        time='2:00:00',
-        partition='kerngpu',
-        mem_mb=30000
-    shell: 'python ../../locator/scripts/locator.py --zarr {input.genotype} --sample_data {input.trainingset} --max_SNPs 100000 --out {params} --keep_weights'
-
-
-
+        runtime=30,
+        mem_mb=300000,
+        partition='gpu2',
+        gpus=1,
+        constraint='gpu-10gb'
+    shell:
+        """
+        module load cuda/11.5.1
+        python ../../locator/scripts/locator.py --zarr {input.gt} --sample_data {input.ts} --max_SNPs 100000 --out {params} --keep_weights
+        """
 

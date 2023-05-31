@@ -122,7 +122,7 @@ early() { //competition
 
      if((community.tick % 1e5)==0){
         if(sim.treeSeqCoalesced()){
-             outname=OUTDIR + '_' + simID + '.trees';
+             outname=OUTDIR + '.trees';
           sim.treeSeqOutput(outname, metadata=params);
           sim.simulationFinished();
       }
@@ -130,7 +130,7 @@ early() { //competition
 } 
 
 2000000 late() {
-        outname=OUTDIR + '_' + simID + '.trees';
+        outname=OUTDIR + '.trees';
         sim.treeSeqOutput(outname, metadata=params);
         sim.simulationFinished();
       }
