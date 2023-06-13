@@ -12,8 +12,8 @@ suppressMessages(suppressWarnings(require(tidyverse)))
 
 get_err <- function(predlocs) {
     params <- str_extract_all(predlocs,"\\(?[0-9,.]+\\)?")[[1]]
-    sigma <- params[1]
-    rep <- params[3]
+    sigma <- 1
+    rep <- params[2]
     if (grepl('uniform', predlocs)) { skew <- 0 }
     else if (grepl('run_', predlocs)) { skew <- params[5] }
     else { skew <- params[4] }
@@ -42,7 +42,7 @@ get_err <- function(predlocs) {
 }
                  
 
-directory = "slimulation/out/predlocs/"
+directory = "slimulation/downsampled/out/predlocs/"
 unf <- Sys.glob(paste0(directory, '*_predlocs.txt'))
 df <- get_err(unf[1])
 for (f in unf[2:length(unf)]){
@@ -50,4 +50,4 @@ for (f in unf[2:length(unf)]){
     df <- rbind(df, pd)
 }
       
-write.table(df, 'skew_predlocs.txt', sep='\t', row.names=FALSE)
+write.table(df, 'downsample_skew_predlocs.txt', sep='\t', row.names=FALSE)
