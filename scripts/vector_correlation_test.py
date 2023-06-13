@@ -6,12 +6,14 @@ run permutation test for correlation N times
 import pandas as pd, numpy as np
 from sklearn import linear_model
 from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.neighbors import BallTree
 from sklearn.neighbors import NearestNeighbors
 from scipy import stats
 from scipy.stats import chi2
 from scipy.stats import ttest_ind
 from numpy.random import default_rng
 from scipy.spatial import KDTree
+from sklearn.metrics.pairwise import haversine_distances
 import math, os
 
 import argparse
@@ -19,6 +21,7 @@ parser=argparse.ArgumentParser()
 parser.add_argument('--ag', help='path to anopheles centroids')
 parser.add_argument('--pf', help='path to plasmodium centroids')
 parser.add_argument('--N', type=int, default=1000)
+parser.add_argument('--latlong', default=False, action='store_true')
 parser.add_argument('--out', help='path to output (appended with _correlation.txt and _permutation.txt')
 args=parser.parse_args()
 
@@ -52,7 +55,7 @@ def veccor(u1, v1, u2, v2):
     r = (f1 + f2 + f3 + f4 +  f5 + f6 + f7 + f8) / (g1 * g2)
     return r
 
-def distance_matrix(df1, df2, max_distance=10):
+def distance_matrix(df1, df2, max_distance=1):
     """
     compute pairwise distance matrix between two spatial datasets
     (for pairing samples)
@@ -127,8 +130,8 @@ def get_angles(df1, df2, idxs1, idxs2):
         idx1 = idxs1[i]
         idx2 = idxs2[i]
 
-        a1.append(math.degrees(math.atan2((df1.loc[idx1, 'kd_x'] - df1.loc[idx1, 'x']), (df1.loc[idx1, 'kd_y'] - df1.loc[idx1, 'y']))))
-        a2.append(math.degrees(math.atan2((df2.loc[idx2, 'kd_x'] - df2.loc[idx2, 'x']), (df2.loc[idx2, 'kd_y'] - df2.loc[idx2, 'y']))))
+        a1.append(math.sin(np.arctan2((df1.loc[idx1, 'kd_y'] - df1.loc[idx1, 'y']), (df1.loc[idx1, 'kd_x'] - df1.loc[idx1, 'x']))))
+        a2.append(math.sin(np.arctan2((df2.loc[idx2, 'kd_y'] - df2.loc[idx2, 'y']), (df2.loc[idx2, 'kd_x'] - df2.loc[idx2, 'x']))))
 
     return a1, a2
 
@@ -142,9 +145,20 @@ def get_mags(df1, df2, idxs1, idxs2):
     for i in range(len(idxs1)):
         idx1 = idxs1[i]
         idx2 = idxs2[i]
+        
+        if args.latlong:
 
-        w1.append(np.hypot((df1.loc[idx1, 'kd_x'] - df1.loc[idx1, 'x']), (df1.loc[idx1, 'kd_y'] - df1.loc[idx1, 'y'])))
-        w2.append(np.hypot((df2.loc[idx2, 'kd_x'] - df2.loc[idx2, 'x']), (df2.loc[idx2, 'kd_y'] - df2.loc[idx2, 'y'])))
+            true =  [math.radians(_) for _ in [df1.loc[idx1, 'x'], df1.loc[idx1, 'y']]]
+            pred = [math.radians(_) for _ in [df1.loc[idx1, 'kd_x'], df1.loc[idx1, 'kd_x']]]
+            w1.append(np.max(haversine_distances([true, pred]) * 6371000/1000))
+
+            true =  [math.radians(_) for _ in [df2.loc[idx2, 'x'], df2.loc[idx2, 'y']]]
+            pred = [math.radians(_) for _ in [df2.loc[idx2, 'kd_x'], df2.loc[idx2, 'kd_x']]]
+            w2.append(np.max(haversine_distances([true, pred]) * 6371000/1000))
+        else:
+
+            w1.append(np.hypot((df1.loc[idx1, 'kd_x'] - df1.loc[idx1, 'x']), (df1.loc[idx1, 'kd_y'] - df1.loc[idx1, 'y'])))
+            w2.append(np.hypot((df2.loc[idx2, 'kd_x'] - df2.loc[idx2, 'x']), (df2.loc[idx2, 'kd_y'] - df2.loc[idx2, 'y'])))
 
     return w1, w2
 
@@ -152,15 +166,21 @@ def get_mags(df1, df2, idxs1, idxs2):
 ag = pd.read_csv(args.ag, sep='\t')
 pf = pd.read_csv(args.pf, sep='\t')
 # read metadata
-pmd = pd.read_csv('data/pf7_africa_QC.txt', sep='\t')
+pmd = pd.read_csv('data/anopheles_plasmodium/pf7_africa_QC.txt', sep='\t')
 pf = pd.merge(pf, pmd, on='sampleID')
-agd = pd.read_csv('data/ag1000g_v3_gambiae.txt', sep='\t')
+agd = pd.read_csv('data/anopheles_plasmodium/ag1000g_v3_gambiae.txt', sep='\t')
 ag = pd.merge(ag, agd, on='sampleID')
 
 
 # distance matrix
 distmat = distance_matrix(ag, pf)
- 
+
+g = len(distmat[0])
+for d in distmat:
+    if len(d) != g:
+        print(len(d))
+        g = len(d)
+
 # run correlation tests, shuffling within-region pairs
 vec_correlation = np.empty(args.N)
 ang_correlation = np.empty(args.N)
@@ -170,6 +190,9 @@ for P in range(args.N):
     # neighbors
     agi, pfi = find_pairs(ag, pf, distmat)
 
+    ag_subset = ag.iloc[agi]
+    pf_subset = pf.iloc[pfi]
+    
     # data for pairs
     u1, v1, u2, v2 = get_vectors(ag, pf, agi, pfi)
     a1, a2 = get_angles(ag, pf, agi, pfi)
