@@ -42,7 +42,7 @@ get_err <- function(predlocs) {
 }
                  
 
-directory = "slimulation/downsampled/out/predlocs/"
+directory = "slimulation/out/predlocs/"
 unf <- Sys.glob(paste0(directory, '*_predlocs.txt'))
 df <- get_err(unf[1])
 for (f in unf[2:length(unf)]){
@@ -50,4 +50,4 @@ for (f in unf[2:length(unf)]){
     df <- rbind(df, pd)
 }
       
-write.table(df, 'downsampled_skew_predlocs.txt', sep='\t', row.names=FALSE)
+write.table(df, 'skew_predlocs.txt', sep='\t', row.names=FALSE)
