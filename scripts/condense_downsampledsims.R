@@ -14,9 +14,7 @@ get_err <- function(predlocs) {
     params <- str_extract_all(predlocs,"\\(?[0-9,.]+\\)?")[[1]]
     sigma <- 1
     rep <- params[2]
-    if (grepl('uniform', predlocs)) { skew <- 0 }
-    else if (grepl('run_', predlocs)) { skew <- params[5] }
-    else { skew <- params[4] }
+    skew <- params[1]
     pd <- fread(predlocs)
     locs <- fread(paste0('slimulation/out/metadata/',
                          'sigma_',sigma,'_bias_0_run_',rep,'_metadata.txt'))
