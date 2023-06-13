@@ -1,0 +1,20 @@
+#!/bin/bash
+#SBATCH --account=kernlab
+#SBATCH --partition=kern,kerngpu
+#SBATCH --job-name=agslim
+#SBATCH --output=slurm/%j.out
+#SBATCH --error=slurm/%j.err
+#SBATCH --cpus-per-task=1
+#SBATCH --nodes=1
+#SBATCH --mem=100G
+#SBATCH --ntasks-per-node=1
+#SBATCH --time=10-00:00:00
+
+# run one SLiMulation
+# $1=output+.trees 
+
+module purge
+module load miniconda
+source activate SLiM
+
+slim -d "outpath='"$1"'" -d sigma=$2 scripts/africa_anopheles_0.05scale_sigma.slim

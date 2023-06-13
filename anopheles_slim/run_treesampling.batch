@@ -1,0 +1,20 @@
+#!/bin/bash
+#SBATCH --account=kernlab
+#SBATCH --partition=kern,kerngpu
+#SBATCH --job-name=agtree
+#SBATCH --output=slurm/%j.out
+#SBATCH --error=slurm/%j.err
+#SBATCH --cpus-per-task=1
+#SBATCH --nodes=1
+#SBATCH --mem=150G
+#SBATCH --ntasks-per-node=1
+#SBATCH --time=1-00:00:00
+
+module purge
+module load miniconda; source activate pyslim
+
+python scripts/sample_treeseq.py --tree $1 --process --scalefactor 0.05 --rrate 7.4e-8 --mrate 2e-8 --out $2
+
+rm $2\.vcf
+
+python scripts/random_all_ts.py --metadata $2\_metadata.txt --use_all --out $3\_training_set

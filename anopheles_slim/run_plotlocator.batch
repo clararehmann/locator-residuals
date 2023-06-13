@@ -1,0 +1,16 @@
+#!/bin/bash
+#SBATCH --account=kernlab
+#SBATCH --partition=kern,kerngpu
+#SBATCH --job-name=agerr
+#SBATCH --output=slurm/%j.out
+#SBATCH --error=slurm/%j.err
+#SBATCH --cpus-per-task=1
+#SBATCH --nodes=1
+#SBATCH --mem=10G
+#SBATCH --ntasks-per-node=1
+#SBATCH --time=01:00:00
+
+module purge
+module load miniconda; source activate py39
+
+python scripts/plot_locator.py --infile $1 --sample_data $2 --out $3
