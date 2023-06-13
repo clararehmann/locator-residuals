@@ -1,0 +1,136 @@
+initialize() {
+        
+        scale_factor=0.05; // landscale scaling size
+        pop_size=175000;   // average pop. size
+    
+        sigma_i=sigma*asFloat(scale_factor); // N km dispersal rate
+	bias=0.0;
+
+	initializeSLiMModelType("nonWF");
+	initializeSLiMOptions(dimensionality="xy");
+	initializeTreeSeq();
+
+	recomb=7.4e-8;     // rho = 4 * 0.013
+
+        defineConstant("Sf", asFloat(scale_factor)); // make the landscape smaller than actual Africa kilometers
+        defineConstant("Wx", 6900*Sf);
+        defineConstant("Wy", 4748*Sf);
+
+	defineConstant("K", 5);  // carrying-capacity per unit square (roughly)
+	defineConstant("SD", sigma_i);  // sigma_D, the dispersal distance
+	defineConstant("SI", sigma_i);  // sigma_I, the spatial interaction distance
+	defineConstant("SM", SI);  // sigma_M, the mate choice distance
+	defineConstant("L", 2);    // mean lifetime at stationarity
+	defineConstant("G", 1e8);  // genome length
+	defineConstant("FECUN", 1/L); // mean fecundity
+	defineConstant("RHO", FECUN/((1+FECUN) * K)); // constant in spatial competition function
+	defineConstant("BIAS", bias);  // bias on dispersal (towards North East)
+
+	initializeMutationType("m1", 0.5, "g", 0.0, 2);
+	initializeGenomicElementType("g1", m1, 1.0);
+	initializeGenomicElement(g1, 0, G-1);
+	initializeMutationRate(0.0);
+	initializeRecombinationRate(recomb);
+
+	// spatial competition
+	initializeInteractionType(1, "xy", reciprocal=T, maxDistance=SI * 3);
+	i1.setInteractionFunction("n", 1.0/(2*PI*SI^2), SI);
+
+	// mate choice
+	initializeInteractionType(2, "xy", reciprocal=T, maxDistance=SM * 3);
+	i2.setInteractionFunction("n", 1.0/(2*PI*SM^2), SM);
+
+}
+
+reproduction() {
+	// choose our nearest neighbor as a mate, within the max distance
+	mate = i2.drawByStrength(individual, 1);
+	if (mate.size()) {
+		nOff = rpois(1, FECUN);
+		//individual.tag = individual.tag + nOff;  // DEBUG
+		for (i in seqLen(nOff)) {
+			do pos = individual.spatialPosition + rnorm(2, BIAS, SD); // add biased dispersal
+			while (!p1.pointInBounds(pos));
+				while (p1.spatialMapValue('africa', pos) == 1.0)
+					pos = p1.pointUniform();
+				offspring=subpop.addCrossed(individual, mate);
+				offspring.setSpatialPosition(p1.pointReflected(pos));
+
+		}
+	}
+	return;
+}
+
+1 early() {
+
+	sim.addSubpop("p1", asInteger(175000));
+	p1.setSpatialBounds(c(0, 0, Wx, Wy));
+	
+	mapImage = Image("/home/crehmann/kernlab/anopheles_slim/africa_terrain_mless.png");
+	p1.defineSpatialMap("africa", "xy", mapImage.floatB,
+		valueRange=c(0.0, 1.0), colors=c("#000000", "#ffffff"));	
+	
+	// random initial positions
+	for (ind in p1.individuals) {
+		pos = p1.pointUniform(); 
+		while (!p1.pointInBounds(pos));
+			while (p1.spatialMapValue('africa', pos) == 1.0)
+				pos = p1.pointUniform();	
+		ind.setSpatialPosition(pos);
+	}
+	i1.evaluate();
+
+	// header info
+	cat("gen" + " " + "stage" + " " + "age" + " " + "density");
+	catn(" " + "neighbor" + " " + "harm_neigh" + " " + "num_off" +
+		" " +"var_off"+" "+ "time");
+}
+
+early() { //competition
+
+	i1.evaluate(p1);
+	inds = p1.individuals;
+        
+        // neighbor competition    
+        competition = i1.totalOfNeighborStrengths(inds);
+	inds.tagF = competition;  // DEBUG
+	inds.fitnessScaling = pmin(0.95, 1/(1 + RHO * competition));
+	// avoid edge effects
+	inds.fitnessScaling = inds.fitnessScaling * pmin(sqrt(inds.x/SI), 1.0) * pmin(sqrt(inds.y/SI), 1.0) * pmin(sqrt((Wx - inds.x)/SI), 1.0) * pmin(sqrt((Wy - inds.y)/SI), 1.0); // corner is bad
+}
+
+1: late() {
+	// to be ready for mate choice
+	i2.evaluate(p1);
+}
+
+2: early() {
+        if (p1.individualCount == 0){
+                catn(sim.generation + " " + "early" + " " + p1.individualCount);
+                sim.simulationFinished();
+        } else {
+	        if ((sim.generation % 20) == 0) {
+                        catn(sim.generation + " " + "early" + " " + p1.individualCount);
+	        }
+        }
+}
+
+2: late() {
+        if (p1.individualCount == 0){
+                catn(sim.generation + " " + "late" + " " + p1.individualCount);
+                sim.simulationFinished();
+        } else {
+                if ((sim.generation % 1) == 0) {
+                        catn(sim.generation + " " + "late" + " " + p1.individualCount);
+                }
+	}
+}
+
+1 {
+	defineConstant("simID", getSeed());
+}
+
+50000 late() {
+        sim.treeSeqOutput(outpath + '.trees');
+        sim.simulationFinished();
+}

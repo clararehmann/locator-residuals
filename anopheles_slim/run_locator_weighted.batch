@@ -1,0 +1,16 @@
+#!/bin/bash
+#SBATCH --account=kernlab
+#SBATCH --partition=kern,kerngpu
+#SBATCH --job-name=aglocwt
+#SBATCH --output=slurm/%j.out
+#SBATCH --error=slurm/%j.err
+#SBATCH --cpus-per-task=1
+#SBATCH --nodes=1
+#SBATCH --mem=50G
+#SBATCH --ntasks-per-node=1
+#SBATCH --time=1-00:00:00
+
+module purge
+module load miniconda; source activate py39
+
+python ../../locator/scripts/locator.py --sample_data $1 --zarr $2 --out $3 --keep_weights --windows --window_size 2000000 --weight_samples "kernel density" --lam $4 --bandwidth $5
