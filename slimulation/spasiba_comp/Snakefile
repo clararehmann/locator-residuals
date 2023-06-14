@@ -1,0 +1,56 @@
+import numpy as np
+import os, sys, subprocess, glob, json
+from pathlib import Path
+
+rng = np.random.default_rng(seed=666)
+
+if os.path.exists('logs'):
+    pass
+else:
+    os.makedirs('logs/')
+output_dir = '../out/'
+zarr_pattern = '../../../locator_work/locator_slim/zarrs/sigma_1_bias_0/run_{rep}.zarr'
+ts_dir = os.path.join(output_dir, 'training_sets/')
+metadata_dir = os.path.join(output_dir, 'metadata/')
+loc_dir = 'out/predlocs/'
+
+
+# wildcards
+sigmas = [0.4, 1]
+mus = [0]
+sim_replicates = np.arange(10)
+skews = [0.6, 0.7, 0.8, 0.9]
+ts_replicates = np.arange(1)
+
+# TEST RUN! 
+#bandwidths = [1]
+#lambdas = [1]
+
+tspattern = "sigma_{sigma}_bias_0_run_{rep}_skew_{skew}_ts.txt"
+fpattern = "sigma_{sigma}_skew_{skew}_run_{rep}"
+files = expand(fpattern, skew=skews, rep=sim_replicates, sigma=sigmas)
+
+localrules: all
+
+rule all:
+    input: [loc_dir + f + '_predlocs.txt' for f in files]
+
+rule locate:
+    input: 
+        ts = ts_dir + tspattern,
+        gt = zarr_pattern
+    params:
+        op = loc_dir + fpattern
+    output: loc_dir + fpattern + '_predlocs.txt'
+    conda: 'locating'
+    resources:
+        runtime=30,
+        mem_mb=300000,
+        partition='gpu2',
+        gpus=1,
+        constraint='gpu-10gb'
+    shell:
+        """
+        module load cuda/11.5.1
+        python ../../../locator/scripts/locator.py --zarr {input.gt} --sample_data {input.ts} --max_SNPs 10000 --out {params.op}
+        """
