@@ -22,56 +22,57 @@ rule all:
     input: ['ag1000g_centroids.txt', 'ag1000g_weighted_centroids.txt']
         #expand( 'predlocs/{chrom}_{ts}_complete.txt', chrom=chromosomes, ts=training_sets )
 
-rule download:
-    output: 'download_complete.txt'
-    conda: 'gsutil'
-    resources:
-        runtime=300
-    shell: 'bash ../scripts/ag1000g_download.sh'
+#rule download:
+#    output: 'download_complete.txt'
+#    conda: 'gsutil'
+#    resources:
+#        runtime=300
+#    shell: 'bash ../scripts/ag1000g_download.sh'
 
-rule sortdata:
-    input: 'download_complete.txt'
-    output:
-        metadata = 'ag1000g_v3_gambiae.txt',
-        zarr = [directory(i) for i in expand( gtpath, chrom=chromosomes)],
-        genotype = [directory(i) for i in expand( gtpath + '/calldata/GT', chrom=chromosomes )],
-        samples = [directory(i) for i in expand( gtpath + '/samples', chrom=chromosomes )]
-    conda: 'py39'
-    shell: 'python ../scripts/ag1000g_data_sort.py'
+#rule sortdata:
+#    input: 'download_complete.txt'
+#    output:
+#        metadata = 'ag1000g_v3_gambiae.txt',
+#        zarr = [directory(i) for i in expand( gtpath, chrom=chromosomes)],
+#        genotype = [directory(i) for i in expand( gtpath + '/calldata/GT', chrom=chromosomes )],
+#        samples = [directory(i) for i in expand( gtpath + '/samples', chrom=chromosomes )]
+#    conda: 'py39'
+#    shell: 'python ../scripts/ag1000g_data_sort.py'
 
-rule make_ts:
-    input: 'ag1000g_v3_gambiae.txt'
-    output: expand( 'training_sets/ag1000g_ts_{ts}.txt', ts=training_sets )
-    conda: 'py39'
-    shell: 'python ../scripts/make_empirical_ts.py --metadata {input} --pred_prop 0.1 --out training_sets/ag1000g_ts'
+#rule make_ts:
+#    input: 'ag1000g_v3_gambiae.txt'
+#    output: expand( 'training_sets/ag1000g_ts_{ts}.txt', ts=training_sets )
+#    conda: 'py39'
+#    shell: 'python ../scripts/make_empirical_ts.py --metadata {input} --pred_prop 0.1 --out training_sets/ag1000g_ts'
 
-rule run_locator:
-    input:
-        gt = 'snp_genotypes_all/{chrom}/',
-        ts = 'training_sets/ag1000g_ts_{ts}.txt'
-    output: 'out/{chrom}_{ts}_complete.txt'
-    conda: 'locating'
-    resources: 
-        runtime=1000,
-        mem_mb=200000,
-        partition='gpu2',
-        gpus=1,
-        constraint='gpu-10gb'
-    log: 'logs/{chrom}_{ts}.log'
-    shell: 
-        """
-        module load cuda/11.5.1
-        python ../scripts/locator.py --sample_data {input.ts} --zarr {input.gt} --out out/{wildcards.chrom}_{wildcards.ts} --windows --window_size 2000000 &> {log}
-        """
+#rule run_locator:
+#    input:
+#        gt = 'snp_genotypes_all/{chrom}/',
+#        ts = 'training_sets/ag1000g_ts_{ts}.txt'
+#    output: 'out/{chrom}_{ts}_complete.txt'
+#    conda: 'locating'
+#    resources: 
+#        runtime=1000,
+#        mem_mb=200000,
+#        partition='gpu2',
+#        gpus=1,
+#        constraint='gpu-10gb'
+#    log: 'logs/{chrom}_{ts}.log'
+#    shell: 
+ #       """
+  #      module load cuda/11.5.1
+  #      python ../scripts/locator.py --sample_data {input.ts} --zarr {input.gt} --out out/{wildcards.chrom}_{wildcards.ts} --windows --window_size 2000000 &> {log}
+#        """
+
 rule run_weighted:
     input:
-        gt = 'snp_genotypes_all/{chrom}/',
+        gt = 'snp_genotypes_all/{chrom}.zarr/',
         ts = 'training_sets/ag1000g_ts_{ts}.txt'
-    output: 'weighted/{chrom}_{ts}_complete.txt'
+    output: 'weighted/out/{chrom}_{ts}_complete.txt'
     conda: 'locating'
     resources:
         runtime=1000,
-        partition='gpu2',
+        partition='a100gpu',
         mem_mb=200000,
         gpus=1,
         constraint='gpu-10gb'
@@ -79,7 +80,7 @@ rule run_weighted:
     shell:
         """ 
         module load cuda/11.5.1 
-        python ../../locator/scripts/locator.py --sample_data {input.ts} --zarr {input.gt} --out weighted/{wildcards.chrom}_{wildcards.ts} --windows --window_size 2000000 --weight_samples 'kernel density' --bandwidth 100 &> {log}
+        python ../../locator/scripts/locator.py --sample_data {input.ts} --zarr {input.gt} --out weighted/{wildcards.chrom}_{wildcards.ts} --windows --window_size 2000000 --weight_samples 'kernel density' --bandwidth 10000 --lam 4 &> {log}
         """ 
 
 rule plot_locator:
@@ -90,7 +91,7 @@ rule plot_locator:
     shell: 'Rscript ../../locator/scripts/plot_locator.R --infile out --sample_data ag1000g_v3_gambiae.txt --out ag1000g --error --longlat'
 
 rule plot_weighted:
-    input: expand( 'weighted/{chrom}_{ts}_complete.txt', chrom=chromosomes, ts=training_sets )
+    input: expand( 'weighted/out/{chrom}_{ts}_complete.txt', chrom=chromosomes, ts=training_sets )
     output: 'ag1000g_weighted_centroids.txt'
     conda: 'rspatial'
     log: 'logs/weighted_centroids.log'

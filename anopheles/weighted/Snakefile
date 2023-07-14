@@ -1,0 +1,70 @@
+"""
+Snakefile for grid searching best weighting parameters
+"""
+
+import sys, os, glob
+import numpy as np
+
+output_dir='grid_search/'
+
+bnds = [10, 100, 1000, 10000]
+lamb = [0.1, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+trns = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+localrules: all, move_file, move_other
+
+rule all:
+    input: expand(output_dir+'validation_loss/{TR}_lambda_{LM}_bandwidth_{BD}_history.txt', TR=trns, LM=lamb, BD=bnds),
+            expand(output_dir+'validation_loss/{TR}_unweighted_history.txt', TR=trns)
+
+#rule combine_zarr:
+#    output: '../snp_genotypes_all/ALL_CHROM.zarr'
+#    conda: 'py39'
+#    resources:
+#        runtime=20000,
+#        mem_mb=200000
+#    shell: 'cd ..; python ../scripts/combine_agchrom.py'
+
+rule run_locator:
+    input: 
+        zr = '../snp_genotypes_all/2R.zarr',
+        ts = '../training_sets/ag1000g_ts_{TR}.txt'
+    conda: 'locating'
+    output:
+        output_dir+'{TR}_lambda_{LM}_bandwidth_{BD}/out_45000000-47999999_predlocs.txt'
+    resources:
+        runtime=1000,
+        partition='a100gpu',
+        mem_mb=50000,
+        gpus=1,
+        constraint='gpu-10gb'
+    shell:
+        'module load cuda/11.5.1; python ~/kernlab/locator/scripts/locator.py --sample_data {input.ts} --zarr {input.zr} --out '+output_dir+'{wildcards.TR}_lambda_{wildcards.LM}_bandwidth_{wildcards.BD}/out --weight_samples "kernel density" --keep_weights --lam {wildcards.LM} --bandwidth {wildcards.BD} --max_SNPs 100000 --windows --window_start 45000000 --window_stop 48000000 --window_size 3000000'
+
+rule run_other:
+    input: 
+        zr = '../snp_genotypes_all/2R.zarr',
+        ts = '../training_sets/ag1000g_ts_{TR}.txt'
+    conda: 'locating'
+    output:
+        output_dir+'{TR}_unweighted/out_45000000-47999999_predlocs.txt'
+    resources:
+        runtime=1000,
+        partition='a100gpu',
+        mem_mb=50000,
+        gpus=1,
+        constraint='gpu-10gb'
+    shell:
+        'module load cuda/11.5.1; python ~/kernlab/locator/scripts/locator.py --sample_data {input.ts} --zarr {input.zr} --out '+output_dir+'{wildcards.TR}_unweighted/out --keep_weights --max_SNPs 100000 --windows --window_start 45000000 --window_stop 48000000 --window_size 3000000'
+
+rule move_other:
+    input: output_dir+'{TR}_unweighted/out_45000000-47999999_predlocs.txt'
+    params: output_dir+'{TR}_unweighted/out_history.txt'
+    output: output_dir+'validation_loss/{TR}_unweighted_history.txt'
+    shell: 'cp {params} {output}'
+
+rule move_file:
+    input: output_dir+'{TR}_lambda_{LM}_bandwidth_{BD}/out_45000000-47999999_predlocs.txt'
+    params: output_dir+'{TR}_lambda_{LM}_bandwidth_{BD}/out_history.txt'
+    output: output_dir+'validation_loss/{TR}_lambda_{LM}_bandwidth_{BD}_history.txt'
+    shell: 'cp {params} {output}'

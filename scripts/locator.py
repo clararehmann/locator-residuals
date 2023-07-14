@@ -283,8 +283,7 @@ def filter_snps(genotypes):
         ac=replace_md(genotypes)
     else:
         ac=genotypes.to_allele_counts()[:,:,1]
-    if not args.max_SNPs==None:
-        ac=ac[np.random.choice(range(ac.shape[0]),args.max_SNPs,replace=False),:]
+    if not args.max_SNPs==None:       ac=ac[np.random.choice(range(ac.shape[0]),args.max_SNPs,replace=False),:]
     print("running on "+str(len(ac))+" genotypes after filtering\n\n\n")
     return ac
 
